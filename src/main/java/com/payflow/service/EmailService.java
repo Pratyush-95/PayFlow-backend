@@ -2,58 +2,91 @@
 package com.payflow.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.http.MediaType;
+import org.springframework.mail.MailSendException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private final RestClient restClient;
 
-    @Value("${app.mail.from}")
+    @Value("${resend.api-key}")
+    private String apiKey;
+
+    @Value("${resend.from}")
     private String fromEmail;
 
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
+    public EmailService() {
+        this.restClient = RestClient.builder()
+                .baseUrl("https://api.resend.com")
+                .build();
     }
 
     public void sendOtpEmail(String toEmail, String otp) {
 
-        SimpleMailMessage message = new SimpleMailMessage();
+        String subject = "PayFlow - Email Verification OTP";
 
-        message.setFrom(fromEmail);
-        message.setTo(toEmail);
-        message.setSubject("PayFlow - Email Verification OTP");
+        String text = """
+                Welcome to PayFlow!
 
-        message.setText(
-                "Welcome to PayFlow!\n\n"
-                        + "Your email verification OTP is: " + otp + "\n\n"
-                        + "This OTP is valid for 5 minutes.\n\n"
-                        + "If you did not request this OTP, please ignore this email."
-        );
+                Your email verification OTP is: %s
 
-        mailSender.send(message);
+                This OTP is valid for 5 minutes.
+
+                If you did not request this OTP, please ignore this email.
+                """.formatted(otp);
+
+        sendEmail(toEmail, subject, text);
     }
 
     public void sendPasswordResetOtpEmail(String toEmail, String otp) {
 
-        SimpleMailMessage message = new SimpleMailMessage();
+        String subject = "PayFlow - Password Reset OTP";
 
-        message.setFrom(fromEmail);
-        message.setTo(toEmail);
-        message.setSubject("PayFlow - Password Reset OTP");
+        String text = """
+                Hello,
 
-        message.setText(
-                "Hello,\n\n"
-                        + "Your PayFlow password reset OTP is: " + otp + "\n\n"
-                        + "This OTP is valid for 5 minutes.\n"
-                        + "Do not share this OTP with anyone.\n\n"
-                        + "If you did not request a password reset, "
-                        + "please ignore this email.\n\n"
-                        + "Team PayFlow"
+                Your PayFlow password reset OTP is: %s
+
+                This OTP is valid for 5 minutes.
+                Do not share this OTP with anyone.
+
+                If you did not request a password reset,
+                please ignore this email.
+
+                Team PayFlow
+                """.formatted(otp);
+
+        sendEmail(toEmail, subject, text);
+    }
+
+    private void sendEmail(String toEmail, String subject, String text) {
+
+        Map<String, Object> payload = Map.of(
+                "from", fromEmail,
+                "to", List.of(toEmail),
+                "subject", subject,
+                "text", text
         );
 
-        mailSender.send(message);
+        try {
+            restClient.post()
+                    .uri("/emails")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity();
+
+        } catch (RestClientException ex) {
+            throw new MailSendException(
+                    "Failed to send email using Resend API", ex);
+        }
     }
 }
