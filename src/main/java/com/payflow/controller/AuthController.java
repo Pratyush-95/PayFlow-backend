@@ -61,6 +61,8 @@ public class AuthController {
                     .body(Map.of("message", ex.getMessage()));
 
         } catch (MailException ex) {
+            ex.printStackTrace();
+
             return ResponseEntity
                     .status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of(
